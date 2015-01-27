@@ -129,67 +129,7 @@ long mrcDeltaP1 = 0;
 // I also set the default wheel size to RCX wheels
 void SetWheelRatio()
 {
-  int nSelect;
- 
-  // Start off with RCX size selected
-  nSelect = 3;
- 
-  do {
-    // Display base text of user interface on screen
-    ClearScreen();       //HiTechnic-HTWayC
-    TextOut(0, LCD_LINE1, "  dIMU Segway   ");
-    TextOut(6, LCD_LINE2, "Set wheel size:");
-    TextOut(2, LCD_LINE8, "<   [Select]   >");
- 
-    // Display current selection
-    switch (nSelect) {
-    case 1:
-      // Small
-      CircleOut(50, 32, 6);
-      TextOut(7, LCD_LINE7, "Small (NXT 2.0)");
-      ratioWheel = WHEEL_RATIO_NXT2;
-      break;
-    case 2:
-      // Medium
-      CircleOut(50, 32, 10);
-      TextOut(2, LCD_LINE7, "Medium (NXT 1.0)");
-      ratioWheel = WHEEL_RATIO_NXT1;
-      break;
-    case 3:
-      // Large
-      CircleOut(50, 32, 14);
-      TextOut(17, LCD_LINE7, "Large (RCX)");
-      ratioWheel = WHEEL_RATIO_RCX;
-      break;
-    case 4:
-      // X Large
-      TextOut(29, LCD_LINE7, "X Large");
-      CircleOut(50, 31, 16);
-      ratioWheel = WHEEL_RATIO_X_LARGE;
-      break;
-    }
- 
-    // Make sure previous button is released, loop until all released
-    while(ButtonPressed(BTNLEFT, false) ||
-          ButtonPressed(BTNCENTER, false) ||
-          ButtonPressed(BTNRIGHT, false));
- 
-    // Get button press to navigate menu
-    while(true) {
-      if (ButtonPressed(BTNLEFT, false)) {
-        nSelect--;
-        if (nSelect < 1) nSelect = 4;
-        break;
-      }
-      if (ButtonPressed(BTNRIGHT, false)) {
-        nSelect++;
-        if (nSelect > 4) nSelect = 1;
-        break;
-      }
-      if (ButtonPressed(BTNCENTER, false))
-        break;
-    }
-  } until (ButtonPressed(BTNCENTER, false));
+  ratioWheel = WHEEL_RATIO_NXT1;
   ClearScreen();
 }
  
@@ -252,9 +192,6 @@ void StartBeeps()
     PlayTone(440,100);
     Wait(1000);
   }
-  NumOut(47, LCD_LINE4, 0);
-  PlayTone(440,1000);
-  Wait(1000);
 }
  
 //=====================================================================
