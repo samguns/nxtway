@@ -1,0 +1,259 @@
+// By Matthew Richardson
+// Based in part on several programs by Dexter Industries
+ 
+// These bytes set the full scale range of the gyroscope.
+// it is important to define full_scale_range.  Values are below.
+//0x00 - 250 dps.  Full scale range.
+//0x10 - 500 dps.  Full scale range.
+//0x30 - 2000 dps.  Full scale range.
+#define full_scale_range_250    0x00
+#define full_scale_range_500    0x10
+#define full_scale_range_2000   0x30
+ 
+#define dIMU_Accel_Addr 0x3A
+ 
+// G_Mode not tested yet. Not commented yet. FIXME
+void dIMU_Accel_Init(byte port, byte G_Mode = 2){
+  byte I2Csnd[3];
+  I2Csnd[0] = dIMU_Accel_Addr;  // I2C Address of Accelerometer.
+ 
+  //Set the Mode Control - P.25 of Documentation
+  ////////////////////////////////////////////////////////////////////////////
+    I2Csnd[1] = 0x16;                   // Register address of Mode Control
+    I2Csnd[2] = 0x05;                   // 0x05 For 2G
+    if(G_Mode == 0x01) I2Csnd[2] = 0x09; // 0x09 For 4G
+    if(G_Mode == 0x02) I2Csnd[2] = 0x01; // 0x01 For 8G
+ 
+  byte I2Crec[1];           // We are looking for a single byte returned.
+  byte cnt = 1;             // cnt must be a variable, not a constant
+  I2CBytes(port, I2Csnd, cnt, I2Crec);
+}
+ 
+void dIMU_Accel_Read(byte port, float & Accel_X, float & Accel_Y, float & Accel_Z){
+ 
+  byte I2Csnd[2];              // Sending buffer
+  I2Csnd[0] = dIMU_Accel_Addr; // I2C Address of accl.
+  I2Csnd[1] = 0x00;            // First Register of the data we're requesting.
+  byte cnt = 6;                // Number of bytes to request
+  byte I2Crec[6];              // Receiving buffer
+ 
+  I2CBytes(port, I2Csnd, cnt, I2Crec);    //Send the address and the register, and receive the 6 bytes of data.
+ 
+  Accel_X = I2Crec[1] * 256 + I2Crec[0];  // Convert the returned array into floating point G values
+  Accel_Y = I2Crec[3] * 256 + I2Crec[2];  //                ''
+  Accel_Z = I2Crec[5] * 256 + I2Crec[4];  //                ''
+ 
+  if(Accel_X > 512)Accel_X -= 1023;       // Convert into a signed value
+  if(Accel_Y > 512)Accel_Y -= 1023;       //                ''
+  if(Accel_Z > 512)Accel_Z -= 1023;       //                ''
+ 
+  Accel_X /= 64;
+  Accel_Y /= 64;
+  Accel_Z /= 64;
+ 
+  return;
+}
+ 
+void dIMU_Accel_Write_Calibration(byte port, int x_offset, int y_offset, int z_offset){
+ 
+  byte I2Csnd[8];
+  I2Csnd[0] = dIMU_Accel_Addr; // I2C Address of accel.
+  I2Csnd[1] = 0x10;            // Register of the data we're writing.
+  I2Csnd[2] = x_offset;         // The drift value to write for calibration.
+  I2Csnd[3] = x_offset>>8;      //                 ''
+  I2Csnd[4] = y_offset;         //                 ''
+  I2Csnd[5] = y_offset>>8;      //                 ''
+  I2Csnd[6] = z_offset;         //                 ''
+  I2Csnd[7] = z_offset>>8;      //                 ''
+ 
+  byte I2Crec[1];              // We are looking for a single byte returned.
+  byte cnt = 1;                // cnt must be a variable, not a constant
+  I2CBytes(port, I2Csnd, cnt, I2Crec);   //Send the address, register, and 6 bytes of calibration data.
+}
+ 
+// Not commented, or entirely tested yet. I also should implement an average of n readings. FIXME
+// This assumes that the z axis is placed flat.  When sensor is flat on the ground
+// the x and y axis should be zero.
+// There may be a better way to calibrate this.  But it's the most user-friendly.
+// Gravity direction is 1 (x), 2 (y), 3 (z) and 0 (off).  This is the field direction that gravity is headed.
+ 
+void dIMU_Accel_Calibrate(byte port, int gravity_direction = 3){
+ 
+  dIMU_Accel_Write_Calibration(port, 0, 0, 0);    // Clear all of the calibration registers.
+ 
+  int x_offset;
+  int y_offset;
+  int z_offset;
+ 
+  byte I2Csnd[2];              // Sending buffer
+  I2Csnd[0] = dIMU_Accel_Addr; // I2C Address of accel.
+  I2Csnd[1] = 0x00;            // First Register of the data we're requesting.
+  byte cnt = 6;                // Number of bytes to request
+  byte I2Crec[6];              // Receiving buffer
+ 
+  I2CBytes(port, I2Csnd, cnt, I2Crec);     //Send the address and the register, and receive the 6 bytes of data.
+ 
+  x_offset = I2Crec[1] * 256 + I2Crec[0];  // Convert the returned array into floating point G values
+  y_offset = I2Crec[3] * 256 + I2Crec[2];  //                ''
+  z_offset = I2Crec[5] * 256 + I2Crec[4];  //                ''
+  if(x_offset > 512)x_offset -= 1023;      // Convert into a signed value
+  if(y_offset > 512)y_offset -= 1023;      //                ''
+  if(z_offset > 512)z_offset -= 1023;      //                ''
+ 
+  // We will calibrate depending on the axis that's inline with the gravity field.
+  // Positive 1G is 64 decimal, or 0x40 Hex, so we need to subtract that from the proper axis.
+  switch(gravity_direction){
+ 
+   case 1: x_offset -= 0x40;   // Subtract out the 1-g that the x-axis is experiencing.
+    break;
+ 
+   case 2: y_offset -= 0x40;   // Subtract out the 1-g that the y-axis is experiencing.
+    break;
+ 
+   default: z_offset -= 0x40;  // Subtract out the 1-g that the z-axis is experiencing.
+    break;
+  }
+ 
+  x_offset *= (-2);    // Treated normally here and just zero it out.
+  y_offset *= (-2);    // Treated normally here and just zero it out.
+  z_offset *= (-2);    // Treated normally here and just zero it out.
+ 
+  dIMU_Accel_Write_Calibration(port, x_offset, y_offset, z_offset);
+}
+ 
+int divisor = 128;      // This will be the divisor we divide the raw value of the gryscope by
+                        // to get a scaled value on output.  Default will be for 250 dps,
+                        // but we'll define it again in start_gyro.
+ 
+void dIMU_Gyro_Init(byte port, byte range){
+  byte I2Csnd[3];        // We are writing 3 bytes at a time, and...
+  byte I2Crec[1];        // ...we are looking for a single byte returned.
+  I2Csnd[0] = 0xD2;      // I2C Address of gyro.
+ 
+  //Write CTRL_REG1
+  ////////////////////////////////////////////////////////////////////////////
+    I2Csnd[1] = 0x20;      // Register address of CTRL_REG1
+    I2Csnd[2] = 0x0F;      // Enable all axes. Disable power down.
+    //I2CBytes(port, I2Csnd, cnt, I2Crec);
+     
+    I2CWrite(port, 1, I2Csnd);
+    Wait(10);
+    I2CRead(port, 1, I2Crec);
+ 
+  //Write CTRL_REG2
+  ////////////////////////////////////////////////////////////////////////////
+    I2Csnd[1] = 0x21;                  // Register address of CTRL_REG2
+    I2Csnd[2] = 0x00;                  // No High Pass Filter
+    I2CWrite(port, 1, I2Csnd);
+    Wait(10);
+    I2CRead(port, 1, I2Crec);
+ 
+  //Write CTRL_REG3
+  ////////////////////////////////////////////////////////////////////////////
+    I2Csnd[1] = 0x22;      // Register address of CTRL_REG3
+    I2Csnd[2] = 0x08;      // No interrupts.  Date ready.
+    I2CWrite(port, 1, I2Csnd);
+    Wait(10);
+    I2CRead(port, 1, I2Crec);
+ 
+  //Write CTRL_REG4
+  ////////////////////////////////////////////////////////////////////////////
+    I2Csnd[1] = 0x23;      // Register address of CTRL_REG4
+    I2Csnd[2] = range;     // Full scale range.
+    I2CWrite(port, 1, I2Csnd);
+    Wait(10);
+    I2CRead(port, 1, I2Crec);
+ 
+  //Write CTRL_REG5
+  ////////////////////////////////////////////////////////////////////////////
+    I2Csnd[1] = 0x24;      // Register address of CTRL_REG5
+    I2Csnd[2] = 0x00;      // Enable all axes. Disable power down.
+    I2CWrite(port, 1, I2Csnd);
+    Wait(10);
+    I2CRead(port, 1, I2Crec);
+ 
+   // Set divisor so that the output of our gyro axis readings can be turned
+   // into scaled values.
+   ///////////////////////////////////////////////////////////////////////////
+    if(range == 0) divisor = 128;      // Full scale range is 250 dps.
+    if(range == 0x10) divisor = 64;    // Full scale range is 500 dps.
+    if(range == 0x30) divisor = 16;    // Full scale range is 2000 dps.
+}
+ 
+// Gyro: axis_reading gets a byte of axis reading data
+//
+byte dIMU_Gyro_Read_Byte(byte port, byte reg){
+  byte I2Csnd[2];
+  I2Csnd[0] = 0xD2;   // I2C Address of gyro.
+  I2Csnd[1] = reg;    // Register of the data we're requesting.
+ 
+  byte I2Crec[1];    // We are looking for a single byte returned.
+ 
+  I2CWrite(port, 1, I2Csnd);
+  Wait(10);
+  I2CRead(port, 1, I2Crec);
+ 
+  byte result = I2Crec[0];
+  return result;
+}
+ 
+// Gyro: gets a full axis reading, scaled to the full scale reading.  Returns
+// float in degrees per second.
+ 
+float dIMU_Gyro_Read_Axis(byte port, byte axis){
+  // ubyte axis definitions
+  // 0x00 - x-axis
+  // 0x01 - y-axis
+  // 0x02 - z-axis
+ 
+  byte hb = 0;
+  byte lb = 0;
+ 
+  if(axis == 0x00) {               // x-axis
+    hb = dIMU_Gyro_Read_Byte(port, 0x29);
+    lb = dIMU_Gyro_Read_Byte(port, 0x28);
+  }
+  if(axis == 0x01) {               // y-axis
+    hb = dIMU_Gyro_Read_Byte(port, 0x2B);
+    lb = dIMU_Gyro_Read_Byte(port, 0x2A);
+  }
+  if(axis == 0x02) {               // z-axis
+    hb = dIMU_Gyro_Read_Byte(port, 0x2D);
+    lb = dIMU_Gyro_Read_Byte(port, 0x2C);
+  }
+  int RAW_val = (lb+(hb<<8));
+  float val = RAW_val/divisor;  // Assemble the final number by assembling the two bytes,
+                                             // and dividing it by the divisor (defined in the gyro startup,
+                                             // to get a properly scaled long.
+  return val;
+}
+
+
+void dIMU_Gyro_Read(byte port, float &x_axis, float &y_axis, float &z_axis){
+    byte hb = 0;
+    byte lb = 0;
+    int raw;
+
+    // x-axis
+    hb = dIMU_Gyro_Read_Byte(port, 0x29);
+    lb = dIMU_Gyro_Read_Byte(port, 0x28);
+    raw = (lb + (hb << 8));
+    x_axis = raw / divisor;
+
+    // y-axis
+    hb = dIMU_Gyro_Read_Byte(port, 0x2B);
+    lb = dIMU_Gyro_Read_Byte(port, 0x2A);
+    raw = (lb + (hb << 8));
+    y_axis = raw / divisor;
+
+
+    // z-axis
+    hb = dIMU_Gyro_Read_Byte(port, 0x2D);
+    lb = dIMU_Gyro_Read_Byte(port, 0x2C);
+    raw = (lb + (hb << 8));
+    z_axis = raw / divisor;
+
+    return;
+}
+
+

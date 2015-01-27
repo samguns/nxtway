@@ -1,0 +1,49 @@
+
+#include "dIMU lib.nxc"
+
+#define EMAOFFSET 0.0005
+
+
+task main()
+{
+    float x, y, z;
+    long interval;
+    float offset;
+    float x_degree, y_degree, z_degree;
+    float x_rotation, y_rotation, z_rotation;
+
+    SetSensorLowspeed(S1);
+    dIMU_Gyro_Init(S1, full_scale_range_2000);
+
+    long previous_tick = CurrentTick();
+    x_rotation = y_rotation = z_rotation = 0;
+
+    while (true)
+    {
+        dIMU_Gyro_Read(S1, x, y, z);
+
+        offset = EMAOFFSET * z + (1 - EMAOFFSET) * offset;
+        y = z - offset;
+
+        interval = (CurrentTick() - previous_tick);
+        previous_tick = CurrentTick();
+        x_degree = x * interval / 1000;
+        y_degree = y * interval / 1000;
+        z_degree = z * interval / 1000;
+
+        x_rotation += x_degree;
+        y_rotation += y_degree;
+        z_rotation += z_degree;
+        ClearScreen();
+        NumOut(0, LCD_LINE1, z);
+        NumOut(0, LCD_LINE2, z_degree);
+        NumOut(0, LCD_LINE3, z_rotation);
+
+        NumOut(0, LCD_LINE5, y);
+        NumOut(0, LCD_LINE6, y_degree);
+        NumOut(0, LCD_LINE7, y_rotation);
+
+        Wait(0);
+    }
+}
+
